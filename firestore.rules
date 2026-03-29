@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         request.auth.token.email == "christianearlsiong@gmail.com");
+    }
+    function isSeller() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'seller';
+    }
+    function isBuyer() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'buyer';
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+    }
+
+    // Products Collection
+    match /products/{productId} {
+      allow read: if true; // Products are publicly viewable
+      allow create: if isSeller() || isAdmin();
+      allow update: if (isAuthenticated() && resource.data.sellerId == request.auth.uid) || isAdmin();
+      allow delete: if (isAuthenticated() && resource.data.sellerId == request.auth.uid) || isAdmin();
+    }
+
+    // Orders Collection
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.buyerId == request.auth.uid || isAdmin());
+      allow create: if isBuyer() || isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}
